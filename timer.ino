@@ -50,6 +50,11 @@ void loop() {
 
   if (M5.BtnA.isPressed()) {
     if (state == STATE_STOP) {      
+      // Beep
+      M5.Beep.beep();
+      delay(50);
+      M5.Beep.end();
+
       switch_state();
     }
   }
