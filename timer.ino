@@ -43,6 +43,12 @@ void switch_state(void) {
   M5.Lcd.fillScreen(BLACK);
 }
 
+void beep(const int ms) {
+  M5.Beep.beep();
+  delay(ms);
+  M5.Beep.end();
+}
+
 void loop() {
   M5.update();
 
@@ -50,10 +56,7 @@ void loop() {
 
   if (M5.BtnA.isPressed()) {
     if (state == STATE_STOP) {      
-      // Beep
-      M5.Beep.beep();
-      delay(50);
-      M5.Beep.end();
+      beep(100);
 
       switch_state();
     }
@@ -78,14 +81,12 @@ void loop() {
 
       // Beep twice
       for (int i = 0; i < 2; i++) {
-        M5.Beep.beep();
-        delay(200);
-        M5.Beep.end();
-        delay(100);
+        beep(100);
+        delay(50);
       }
 
       // Wait about 1 sec totally
-      delay(400);
+      delay(700);
 
       switch_state();
     }
