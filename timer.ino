@@ -8,9 +8,12 @@ enum State {
 
 State state;
 
+// Duration
+int duration_min = 0;
+int duration_sec = 0;
+
 // Count in 100 ms
 int count;
-int duration_sec = 0;
 
 void setup() {
   M5.begin();
@@ -31,7 +34,7 @@ void setup() {
 
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setTextColor(WHITE, BLACK);
-  M5.Lcd.setRotation(0);
+  M5.Lcd.setRotation(1);
 
   state = STATE_STOP;
 }
@@ -40,7 +43,7 @@ void switch_state(void) {
   switch (state) {
     case STATE_STOP:
       state = STATE_RUNNING;
-      count = duration_sec * 10;
+      count = (duration_min * 60 + duration_sec) * 10;
       break;
     case STATE_RUNNING:
     default:
@@ -63,8 +66,12 @@ void loop() {
   M5.Lcd.setCursor(0, 0);
 
   if (state == STATE_RUNNING) {
-    M5.Lcd.setTextSize(5);
-    M5.Lcd.printf("%02d s\n%d", count / 10, count % 10);
+    int m = count / 600;
+    int rem = count % 600;
+    int s = rem / 10;
+    int ds = rem % 10;
+    M5.Lcd.setTextSize(6);
+    M5.Lcd.printf("%02dm%02ds%d", m, s, ds);
   } else {
     Wire.beginTransmission(0x42);
     Wire.write(0x10);
@@ -83,18 +90,32 @@ void loop() {
     } else if (val < 0) {
       duration_sec--;
     }
-    // Rotate for 60 sec
+
+    // Rotate duration
     if (duration_sec > 59) {
       duration_sec = 0;
+      duration_min++;
+      if (duration_min > 99) {
+        duration_min = 0;
+        duration_sec = 0;
+      }
     } else if (duration_sec < 0) {
       duration_sec = 59;
+      duration_min--;
+      if (duration_min < 0) {
+        duration_min = 99;
+        duration_sec = 59;
+      }
+    }
+
+    if (duration_min < 0) {
+      duration_min = 0;
     }
     
-    M5.Lcd.setTextSize(5);
-    M5.Lcd.printf("%02d s\n", duration_sec);
+    M5.Lcd.setTextSize(6);
+    M5.Lcd.printf("%02dm%02ds\n", duration_min, duration_sec);
     M5.Lcd.setTextSize(3);
-    M5.Lcd.print("[A]\nstart\n");
-    M5.Lcd.print("[Knob]\nsec\n");
+    M5.Lcd.println("A: start");
 
     if (M5.BtnA.isPressed()) {
       if (state == STATE_STOP) {      
@@ -117,7 +138,8 @@ void loop() {
     if (count == 0) {
       // Print "0.0"
       M5.Lcd.setCursor(0, 0);
-      M5.Lcd.printf("%02d s\n%d", count / 10, count % 10);
+      M5.Lcd.setTextSize(5);
+      M5.Lcd.printf("00m00s0");
 
       // Beep twice
       for (int i = 0; i < 2; i++) {
