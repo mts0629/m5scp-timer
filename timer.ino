@@ -1,37 +1,46 @@
 #include <M5StickCPlus.h>
 
+// Hat Mini Encoder C specification
+#define ENC_INC_ADDR 0x10
+#define ENC_RST_ADDR 0x40
+#define ENC_I2C_ADDR 0x42
+#define ENC_PIN_SDA 0
+#define ENC_PIN_SCL 26
+
 // Timer state
 enum State {
   STATE_STOP = 0,
   STATE_RUNNING
 };
 
-State state;
-
-// Duration
-int duration_min = 0;
-int duration_sec = 0;
+static State state;
 
 // Count in 100 ms
-int count;
+static int count;
+#define SCALE_SEC 10
+
+// Duration
+static int duration = 0;
+#define MAX_DURATION ((99 * 60 + 59) * SCALE_SEC)
 
 void setup() {
   M5.begin();
 
-  // Initialize I2C connection to Hat Mini Encoder
-  Wire.begin(0, 26, 100000UL);
+  // Initialize I2C connection to the encoder
+  Wire.begin(ENC_PIN_SDA, ENC_PIN_SCL, 100000UL);
   delay(10);
-  Wire.beginTransmission(0x42);
+  Wire.beginTransmission(ENC_I2C_ADDR);
   Wire.endTransmission(true);
   delay(100);
 
   // Reset a counter
-  Wire.beginTransmission(0x42);
-  Wire.write(0x40);
+  Wire.beginTransmission(ENC_I2C_ADDR);
+  Wire.write(ENC_RST_ADDR);
   Wire.write(1);
   Wire.endTransmission(true);
   delay(100);
 
+  // Initialize the screen
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setTextColor(WHITE, BLACK);
   M5.Lcd.setRotation(1);
@@ -39,11 +48,11 @@ void setup() {
   state = STATE_STOP;
 }
 
-void switch_state(void) {
+void switch_state() {
   switch (state) {
     case STATE_STOP:
       state = STATE_RUNNING;
-      count = (duration_min * 60 + duration_sec) * 10;
+      count = duration;
       break;
     case STATE_RUNNING:
     default:
@@ -54,103 +63,112 @@ void switch_state(void) {
   M5.Lcd.fillScreen(BLACK);
 }
 
+void print_time(const int count) {
+  // Convert the count to time
+  int m = count / (60 * SCALE_SEC);
+  int rem = count % (60 * SCALE_SEC);
+  int s = rem / SCALE_SEC;
+  int ms = rem % SCALE_SEC;
+
+  M5.Lcd.setCursor(0, 0);
+
+  // Minutes
+  M5.Lcd.setTextSize(10);
+  M5.Lcd.printf("%02d", m);
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.printf("'");
+
+  // Seconds
+  M5.Lcd.setTextSize(10);
+  M5.Lcd.printf("%02d", s);
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.printf("\"");
+
+  // Milliseconds
+  M5.Lcd.setTextSize(10);
+  M5.Lcd.printf("\n%d", ms);
+}
+
+int get_incremental_value() {
+  Wire.beginTransmission(ENC_I2C_ADDR);
+  Wire.write(ENC_INC_ADDR);
+  Wire.endTransmission(true);
+  Wire.requestFrom(ENC_I2C_ADDR, 4);
+
+  uint8_t data[4];
+  for (int i = 0; i < 4; i++) {
+    data[i] = Wire.read();
+  }
+  
+  return ((data[3] << 24) | (data[2] << 16) | (data[1] << 8) | data[0]);
+}
+
+void change_duration(const int inc_val) {
+  if (inc_val > 0) {
+    duration += 1 * SCALE_SEC;
+  } else if (inc_val < 0) {
+    duration -= 1 * SCALE_SEC;
+  }
+
+  // Rotate duration
+  if (duration > MAX_DURATION) {
+    duration = 0;
+  } else if (duration < 0) {
+    duration = MAX_DURATION;
+  }
+}
+
 void beep(const int ms) {
   M5.Beep.beep();
   delay(ms);
   M5.Beep.end();
 }
 
+void finish_timer() {  
+  count = 0;
+
+  // Print zero
+  print_time(count);
+
+  // Beep twice
+  for (int i = 0; i < 2; i++) {
+    beep(100);
+    delay(50);
+  }
+
+  // Wait about 1 sec totally
+  delay(700);
+}
+
 void loop() {
   M5.update();
 
-  M5.Lcd.setCursor(0, 0);
-
   if (state == STATE_RUNNING) {
-    int m = count / 600;
-    int rem = count % 600;
-    int s = rem / 10;
-    int ds = rem % 10;
-    M5.Lcd.setTextSize(6);
-    M5.Lcd.printf("%02dm%02ds%d", m, s, ds);
+    print_time(count);
+
+    delay(100);
+
+    count--;
+
+    if (count <= 0) {
+      finish_timer();
+      switch_state();
+    }
   } else {
-    Wire.beginTransmission(0x42);
-    Wire.write(0x10);
-    Wire.endTransmission(true);
-    Wire.requestFrom(0x42, 4);
-    uint8_t data[4];
-    for (int i = 0; i < 4; i++) {
-      data[i] = Wire.read();
-    }
-  
-    int val = ((data[3] << 24) | (data[2] << 16) | (data[1] << 8) | data[0]);
+    int val = get_incremental_value();
 
-    // Change duration
-    if (val > 0) {
-      duration_sec++;
-    } else if (val < 0) {
-      duration_sec--;
-    }
+    change_duration(val);
 
-    // Rotate duration
-    if (duration_sec > 59) {
-      duration_sec = 0;
-      duration_min++;
-      if (duration_min > 99) {
-        duration_min = 0;
-        duration_sec = 0;
-      }
-    } else if (duration_sec < 0) {
-      duration_sec = 59;
-      duration_min--;
-      if (duration_min < 0) {
-        duration_min = 99;
-        duration_sec = 59;
-      }
-    }
-
-    if (duration_min < 0) {
-      duration_min = 0;
-    }
-    
-    M5.Lcd.setTextSize(6);
-    M5.Lcd.printf("%02dm%02ds\n", duration_min, duration_sec);
-    M5.Lcd.setTextSize(3);
-    M5.Lcd.println("A: start");
+    print_time(duration);
 
     if (M5.BtnA.isPressed()) {
-      if (state == STATE_STOP) {      
+      if (state == STATE_STOP) {
         beep(100);
-
         switch_state();
         return;
       }
     }
-  }
 
-  delay(100);
-
-  if (state == STATE_RUNNING) {
-    count--;
-    if (count < 0) {
-      count = 0;
-    }
-
-    if (count == 0) {
-      // Print "0.0"
-      M5.Lcd.setCursor(0, 0);
-      M5.Lcd.setTextSize(5);
-      M5.Lcd.printf("00m00s0");
-
-      // Beep twice
-      for (int i = 0; i < 2; i++) {
-        beep(100);
-        delay(50);
-      }
-
-      // Wait about 1 sec totally
-      delay(700);
-
-      switch_state();
-    }
+    delay(100);
   }
 }
