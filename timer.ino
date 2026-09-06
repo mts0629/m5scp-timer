@@ -2,6 +2,7 @@
 
 // Hat Mini Encoder C specification
 #define ENC_INC_ADDR 0x10
+#define ENC_BTN_ADDR 0x20
 #define ENC_RST_ADDR 0x40
 #define ENC_I2C_ADDR 0x42
 #define ENC_PIN_SDA 0
@@ -22,6 +23,15 @@ static int count;
 // Duration
 static int duration = 0;
 #define MAX_DURATION ((99 * 60 + 59) * SCALE_SEC)
+
+// Duration selector
+static uint8_t selector;
+#define SELECT_SEC 0
+#define SELECT_MIN 1
+
+// Min/sec configuration
+static int cfg_min = 0;
+static int cfg_sec = 0;
 
 void setup() {
   M5.begin();
@@ -46,6 +56,7 @@ void setup() {
   M5.Lcd.setRotation(1);
 
   state = STATE_STOP;
+  selector = SELECT_SEC;
 }
 
 void switch_state() {
@@ -71,20 +82,30 @@ void print_time(const int count) {
   int ms = rem % SCALE_SEC;
 
   M5.Lcd.setCursor(0, 0);
+  M5.Lcd.setTextColor(WHITE, BLACK);
 
   // Minutes
   M5.Lcd.setTextSize(10);
+  if ((state == STATE_STOP) && (selector == SELECT_MIN)) {
+    M5.Lcd.setTextColor(YELLOW, BLACK);
+  }
   M5.Lcd.printf("%02d", m);
   M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextColor(WHITE, BLACK);
   M5.Lcd.printf("'");
 
   // Seconds
   M5.Lcd.setTextSize(10);
+  if ((state == STATE_STOP) && (selector == SELECT_SEC)) {
+    M5.Lcd.setTextColor(YELLOW, BLACK);
+  }
   M5.Lcd.printf("%02d", s);
   M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextColor(WHITE, BLACK);
   M5.Lcd.printf("\"");
 
   // Milliseconds
+  M5.Lcd.setTextColor(WHITE, BLACK);
   M5.Lcd.setTextSize(10);
   M5.Lcd.printf("\n%d", ms);
 }
@@ -103,19 +124,64 @@ int get_incremental_value() {
   return ((data[3] << 24) | (data[2] << 16) | (data[1] << 8) | data[0]);
 }
 
-void change_duration(const int inc_val) {
-  if (inc_val > 0) {
-    duration += 1 * SCALE_SEC;
-  } else if (inc_val < 0) {
-    duration -= 1 * SCALE_SEC;
+bool is_enc_btn_pressed() {
+  Wire.beginTransmission(ENC_I2C_ADDR);
+  Wire.write(ENC_BTN_ADDR);
+  Wire.endTransmission(false);
+
+  Wire.requestFrom(ENC_I2C_ADDR, 1);
+  static bool pressed = false;
+  if (Wire.read() == 0) {
+    // Detect push
+    if (!pressed) {
+      pressed = true;
+    }
+  } else {
+    // Detect release
+    if (pressed) {
+      pressed = false;
+    }
   }
 
-  // Rotate duration
-  if (duration > MAX_DURATION) {
-    duration = 0;
-  } else if (duration < 0) {
-    duration = MAX_DURATION;
+  return pressed;
+}
+
+void change_duration(const int inc_val) {
+  if (selector == SELECT_SEC) {
+    if (inc_val > 0) {
+      cfg_sec++;
+    } else if (inc_val < 0) {
+      cfg_sec--;
+    }
+
+    // Rotate seconds
+    if (cfg_sec > 59) {
+      cfg_sec = 0;
+    } else if (cfg_sec < 0) {
+      cfg_sec = 59;
+    }
+  } else if (selector == SELECT_MIN) {
+    if (inc_val > 0) {
+      cfg_min++;
+    } else if (inc_val < 0) {
+      cfg_min--;
+    }
+    
+    // Rotate minutes
+    if (cfg_min > 99) {
+      cfg_min = 0;
+    } else if (cfg_min < 0) {
+      cfg_min = 99;
+    }
   }
+
+  duration = ((cfg_min * 60) + cfg_sec) * SCALE_SEC;
+}
+
+void reset_duration() {
+  cfg_min = 0;
+  cfg_sec = 0;
+  duration = 0;
 }
 
 void beep(const int ms) {
@@ -155,6 +221,10 @@ void loop() {
       switch_state();
     }
   } else {
+    if (is_enc_btn_pressed()) {
+      selector = (selector == SELECT_SEC) ? SELECT_MIN : SELECT_SEC;
+    }
+
     int val = get_incremental_value();
 
     change_duration(val);
@@ -162,11 +232,15 @@ void loop() {
     print_time(duration);
 
     if (M5.BtnA.isPressed()) {
-      if (state == STATE_STOP) {
-        beep(100);
-        switch_state();
-        return;
-      }
+      beep(100);
+      switch_state();
+      return;
+    }
+
+    if (M5.BtnB.isPressed()) {
+      beep(100);
+      reset_duration();
+      return;
     }
 
     delay(100);
