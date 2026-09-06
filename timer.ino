@@ -10,8 +10,9 @@
 
 // Timer state
 enum State {
-  STATE_STOP = 0,
-  STATE_RUNNING
+  STATE_CONFIG,
+  STATE_RUNNING,
+  STATE_STOP
 };
 
 static State state;
@@ -55,19 +56,23 @@ void setup() {
   M5.Lcd.setTextColor(WHITE, BLACK);
   M5.Lcd.setRotation(1);
 
-  state = STATE_STOP;
+  state = STATE_CONFIG;
   selector = SELECT_SEC;
 }
 
-void switch_state() {
-  switch (state) {
-    case STATE_STOP:
-      state = STATE_RUNNING;
-      count = duration;
-      break;
+void switch_state(const State next_state) {
+  switch (next_state) {
     case STATE_RUNNING:
-    default:
+      if (state == STATE_CONFIG) {
+        count = duration;
+      }
+      state = STATE_RUNNING;
+      break;
+    case STATE_STOP:
       state = STATE_STOP;
+      break;
+    default: // STATE_CONFIG
+      state = STATE_CONFIG;
       break;
   }
 
@@ -97,7 +102,7 @@ void print_time(const int count) {
 
   // Minutes
   M5.Lcd.setTextSize(10);
-  if ((state == STATE_STOP) && (selector == SELECT_MIN)) {
+  if ((state == STATE_CONFIG) && (selector == SELECT_MIN)) {
     M5.Lcd.setTextColor(YELLOW, BLACK);
   }
   M5.Lcd.printf("%02d", m);
@@ -107,7 +112,7 @@ void print_time(const int count) {
 
   // Seconds
   M5.Lcd.setTextSize(10);
-  if ((state == STATE_STOP) && (selector == SELECT_SEC)) {
+  if ((state == STATE_CONFIG) && (selector == SELECT_SEC)) {
     M5.Lcd.setTextColor(YELLOW, BLACK);
   }
   M5.Lcd.printf("%02d", s);
@@ -221,6 +226,12 @@ void loop() {
 
   if (state == STATE_RUNNING) {
     print_time(count);
+    
+    if (M5.BtnA.isPressed()) {
+      beep(100);
+      switch_state(STATE_STOP);
+      return;
+    }
 
     delay(100);
 
@@ -228,9 +239,25 @@ void loop() {
 
     if (count <= 0) {
       finish_timer();
-      switch_state();
+      switch_state(STATE_CONFIG);
     }
-  } else {
+  } else if (state == STATE_STOP) {
+    print_time(count);
+
+    delay(100);
+
+    if (M5.BtnA.isPressed()) {
+      beep(100);
+      switch_state(STATE_RUNNING);
+      return;
+    }
+
+    if (M5.BtnB.isPressed()) {
+      beep(100);
+      switch_state(STATE_CONFIG);
+      return;
+    }
+  } else { // STATE_CONFIG
     if (is_enc_btn_pressed()) {
       selector = (selector == SELECT_SEC) ? SELECT_MIN : SELECT_SEC;
     }
@@ -243,7 +270,7 @@ void loop() {
 
     if (M5.BtnA.isPressed()) {
       beep(100);
-      switch_state();
+      switch_state(STATE_RUNNING);
       return;
     }
 
