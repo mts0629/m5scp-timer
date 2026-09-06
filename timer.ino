@@ -81,8 +81,19 @@ void print_time(const int count) {
   int s = rem / SCALE_SEC;
   int ms = rem % SCALE_SEC;
 
+  int fg_color = WHITE;
+  if (state == STATE_RUNNING) {
+    // Remaining 5 sec: print by red
+    if (count < (5 * SCALE_SEC)) {
+      fg_color = RED;
+    } else if (count < (10 * SCALE_SEC)) {
+    // Remaining 10 sec: print by yellow
+      fg_color = YELLOW;
+    }
+  }
+
   M5.Lcd.setCursor(0, 0);
-  M5.Lcd.setTextColor(WHITE, BLACK);
+  M5.Lcd.setTextColor(fg_color, BLACK);
 
   // Minutes
   M5.Lcd.setTextSize(10);
@@ -91,7 +102,7 @@ void print_time(const int count) {
   }
   M5.Lcd.printf("%02d", m);
   M5.Lcd.setTextSize(3);
-  M5.Lcd.setTextColor(WHITE, BLACK);
+  M5.Lcd.setTextColor(fg_color, BLACK);
   M5.Lcd.printf("'");
 
   // Seconds
@@ -101,11 +112,10 @@ void print_time(const int count) {
   }
   M5.Lcd.printf("%02d", s);
   M5.Lcd.setTextSize(3);
-  M5.Lcd.setTextColor(WHITE, BLACK);
+  M5.Lcd.setTextColor(fg_color, BLACK);
   M5.Lcd.printf("\"");
 
   // Milliseconds
-  M5.Lcd.setTextColor(WHITE, BLACK);
   M5.Lcd.setTextSize(10);
   M5.Lcd.printf("\n%d", ms);
 }
