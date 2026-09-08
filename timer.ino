@@ -1,4 +1,5 @@
-#include <M5StickCPlus.h>
+#include <Wire.h>
+#include <M5Unified.h>
 
 // Hat Mini Encoder C specification
 #define ENC_INC_ADDR 0x10
@@ -35,7 +36,9 @@ static int cfg_min = 0;
 static int cfg_sec = 0;
 
 void setup() {
-  M5.begin();
+  auto cfg = M5.config();
+
+  M5.begin(cfg);
 
   // Initialize I2C connection to the encoder
   Wire.begin(ENC_PIN_SDA, ENC_PIN_SCL, 100000UL);
@@ -96,7 +99,7 @@ void print_time(const int count) {
       fg_color = YELLOW;
     }
   }
-
+ 
   M5.Lcd.setCursor(0, 0);
   M5.Lcd.setTextColor(fg_color, BLACK);
 
@@ -200,9 +203,8 @@ void reset_duration() {
 }
 
 void beep(const int ms) {
-  M5.Beep.beep();
+  M5.Speaker.tone(2000, 100, 0, false);
   delay(ms);
-  M5.Beep.end();
 }
 
 void finish_timer() {  
