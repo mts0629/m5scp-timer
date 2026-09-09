@@ -57,7 +57,7 @@ void setup() {
   // Initialize the screen
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setTextColor(WHITE, BLACK);
-  M5.Lcd.setRotation(1);
+  M5.Lcd.setRotation(0);
 
   state = STATE_CONFIG;
   selector = SELECT_SEC;
@@ -104,7 +104,7 @@ void print_time(const int count) {
   M5.Lcd.setTextColor(fg_color, BLACK);
 
   // Minutes
-  M5.Lcd.setTextSize(10);
+  M5.Lcd.setTextSize(9);
   if ((state == STATE_CONFIG) && (selector == SELECT_MIN)) {
     M5.Lcd.setTextColor(YELLOW, BLACK);
   }
@@ -114,17 +114,17 @@ void print_time(const int count) {
   M5.Lcd.printf("'");
 
   // Seconds
-  M5.Lcd.setTextSize(10);
+  M5.Lcd.setTextSize(9);
   if ((state == STATE_CONFIG) && (selector == SELECT_SEC)) {
     M5.Lcd.setTextColor(YELLOW, BLACK);
   }
-  M5.Lcd.printf("%02d", s);
+  M5.Lcd.printf("\n%02d", s);
   M5.Lcd.setTextSize(3);
   M5.Lcd.setTextColor(fg_color, BLACK);
   M5.Lcd.printf("\"");
 
   // Milliseconds
-  M5.Lcd.setTextSize(10);
+  M5.Lcd.setTextSize(9);
   M5.Lcd.printf("\n%d", ms);
 }
 
