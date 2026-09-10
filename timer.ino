@@ -227,6 +227,7 @@ void loop() {
   M5.update();
 
   if (state == STATE_RUNNING) {
+    unsigned long t = millis();
     print_time(count);
     
     if (M5.BtnA.isPressed()) {
@@ -237,7 +238,8 @@ void loop() {
 
     delay(100);
 
-    count--;
+    unsigned long t2 = millis();
+    count -= (t2 - t) / 100;
 
     if (count <= 0) {
       finish_timer();
