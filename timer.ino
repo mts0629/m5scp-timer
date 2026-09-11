@@ -87,15 +87,14 @@ void print_time(const int count) {
   int m = count / (60 * SCALE_SEC);
   int rem = count % (60 * SCALE_SEC);
   int s = rem / SCALE_SEC;
-  int ms = rem % SCALE_SEC;
 
   int fg_color = WHITE;
   if (state == STATE_RUNNING) {
-    // Remaining 5 sec: print by red
     if (count < (5 * SCALE_SEC)) {
+      // Remaining 5 sec: print by red
       fg_color = RED;
     } else if (count < (10 * SCALE_SEC)) {
-    // Remaining 10 sec: print by yellow
+      // Remaining 10 sec: print by yellow
       fg_color = YELLOW;
     }
   }
@@ -122,10 +121,6 @@ void print_time(const int count) {
   M5.Lcd.setTextSize(3);
   M5.Lcd.setTextColor(fg_color, BLACK);
   M5.Lcd.printf("\"");
-
-  // Milliseconds
-  M5.Lcd.setTextSize(9);
-  M5.Lcd.printf("\n%d", ms);
 }
 
 int get_incremental_value() {
@@ -223,67 +218,79 @@ void finish_timer() {
   delay(700);
 }
 
+void run() {
+  unsigned long t_s = millis();
+  print_time(count);
+
+  delay(100);
+  
+  if (M5.BtnA.isPressed()) {
+    beep(100);
+    switch_state(STATE_STOP);
+    return;
+  }
+
+  unsigned long t_e = millis();
+  count -= (t_e - t_s) / 100;
+
+  if (count <= 0) {
+    finish_timer();
+    switch_state(STATE_CONFIG);
+  }
+}
+
+void stop() {
+  print_time(count);
+
+  delay(100);
+
+  if (M5.BtnA.isPressed()) {
+    beep(100);
+    switch_state(STATE_RUNNING);
+    return;
+  }
+
+  if (M5.BtnB.isPressed()) {
+    beep(100);
+    switch_state(STATE_CONFIG);
+    return;
+  }
+}
+
+void configure() {
+  if (is_enc_btn_pressed()) {
+    selector = (selector == SELECT_SEC) ? SELECT_MIN : SELECT_SEC;
+  }
+
+  int val = get_incremental_value();
+
+  change_duration(val);
+
+  print_time(duration);
+
+  delay(100);
+
+  if (M5.BtnA.isPressed()) {
+    beep(100);
+    switch_state(STATE_RUNNING);
+    return;
+  }
+
+  if (M5.BtnB.isPressed()) {
+    beep(100);
+    reset_duration();
+    return;
+  }
+}
+
 void loop() {
   M5.update();
 
   if (state == STATE_RUNNING) {
-    unsigned long t = millis();
-    print_time(count);
-    
-    if (M5.BtnA.isPressed()) {
-      beep(100);
-      switch_state(STATE_STOP);
-      return;
-    }
-
-    delay(100);
-
-    unsigned long t2 = millis();
-    count -= (t2 - t) / 100;
-
-    if (count <= 0) {
-      finish_timer();
-      switch_state(STATE_CONFIG);
-    }
+    run();
   } else if (state == STATE_STOP) {
-    print_time(count);
-
-    delay(100);
-
-    if (M5.BtnA.isPressed()) {
-      beep(100);
-      switch_state(STATE_RUNNING);
-      return;
-    }
-
-    if (M5.BtnB.isPressed()) {
-      beep(100);
-      switch_state(STATE_CONFIG);
-      return;
-    }
+    stop();
   } else { // STATE_CONFIG
-    if (is_enc_btn_pressed()) {
-      selector = (selector == SELECT_SEC) ? SELECT_MIN : SELECT_SEC;
-    }
-
-    int val = get_incremental_value();
-
-    change_duration(val);
-
-    print_time(duration);
-
-    if (M5.BtnA.isPressed()) {
-      beep(100);
-      switch_state(STATE_RUNNING);
-      return;
-    }
-
-    if (M5.BtnB.isPressed()) {
-      beep(100);
-      reset_duration();
-      return;
-    }
-
-    delay(100);
+    configure();
   }
 }
