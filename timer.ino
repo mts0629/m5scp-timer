@@ -18,9 +18,9 @@ enum State {
 
 static State state;
 
-// Count in 100 ms
+// Count in ms
 static int count;
-#define SCALE_SEC 10
+#define SCALE_SEC 1000
 
 // Duration
 static int duration = 0;
@@ -31,9 +31,16 @@ static uint8_t selector;
 #define SELECT_SEC 0
 #define SELECT_MIN 1
 
-// Min/sec configuration
-static int cfg_min = 0;
-static int cfg_sec = 0;
+// Time (min/sec)
+struct DispTime {
+  int min;
+  int sec;
+};
+
+// Displayed time
+static DispTime disp_time;
+// Configured time
+static DispTime cfg_time;
 
 void setup() {
   auto cfg = M5.config();
@@ -68,6 +75,7 @@ void switch_state(const State next_state) {
     case STATE_RUNNING:
       if (state == STATE_CONFIG) {
         count = duration;
+        disp_time = cfg_time;
       }
       state = STATE_RUNNING;
       break;
@@ -82,18 +90,15 @@ void switch_state(const State next_state) {
   M5.Lcd.fillScreen(BLACK);
 }
 
-void print_time(const int count) {
-  // Convert the count to time
-  int m = count / (60 * SCALE_SEC);
-  int rem = count % (60 * SCALE_SEC);
-  int s = rem / SCALE_SEC;
-
+void print_time() {
+  DispTime *t = (state == STATE_CONFIG) ? &cfg_time : &disp_time;
+  // Change fg/bg color
   int fg_color = WHITE;
-  if (state == STATE_RUNNING) {
-    if (count < (5 * SCALE_SEC)) {
+  if (state != STATE_CONFIG) {
+    if (count <= (5 * SCALE_SEC)) {
       // Remaining 5 sec: print by red
       fg_color = RED;
-    } else if (count < (10 * SCALE_SEC)) {
+    } else if (count <= (10 * SCALE_SEC)) {
       // Remaining 10 sec: print by yellow
       fg_color = YELLOW;
     }
@@ -103,24 +108,26 @@ void print_time(const int count) {
   M5.Lcd.setTextColor(fg_color, BLACK);
 
   // Minutes
-  M5.Lcd.setTextSize(9);
+  M5.Lcd.setTextSize(10);
   if ((state == STATE_CONFIG) && (selector == SELECT_MIN)) {
+    // Selected on configuration
     M5.Lcd.setTextColor(YELLOW, BLACK);
   }
-  M5.Lcd.printf("%02d", m);
-  M5.Lcd.setTextSize(3);
+  M5.Lcd.printf("%02d", t->min);
+  M5.Lcd.setTextSize(2);
   M5.Lcd.setTextColor(fg_color, BLACK);
-  M5.Lcd.printf("'");
+  M5.Lcd.print("'");
 
   // Seconds
-  M5.Lcd.setTextSize(9);
+  M5.Lcd.setTextSize(10);
   if ((state == STATE_CONFIG) && (selector == SELECT_SEC)) {
+    // Selected on configuration
     M5.Lcd.setTextColor(YELLOW, BLACK);
   }
-  M5.Lcd.printf("\n%02d", s);
-  M5.Lcd.setTextSize(3);
+  M5.Lcd.printf("\n%02d", t->sec);
+  M5.Lcd.setTextSize(2);
   M5.Lcd.setTextColor(fg_color, BLACK);
-  M5.Lcd.printf("\"");
+  M5.Lcd.println("\"");
 }
 
 int get_incremental_value() {
@@ -160,40 +167,32 @@ bool is_enc_btn_pressed() {
 }
 
 void change_duration(const int inc_val) {
-  if (selector == SELECT_SEC) {
-    if (inc_val > 0) {
-      cfg_sec++;
-    } else if (inc_val < 0) {
-      cfg_sec--;
-    }
-
-    // Rotate seconds
-    if (cfg_sec > 59) {
-      cfg_sec = 0;
-    } else if (cfg_sec < 0) {
-      cfg_sec = 59;
-    }
-  } else if (selector == SELECT_MIN) {
-    if (inc_val > 0) {
-      cfg_min++;
-    } else if (inc_val < 0) {
-      cfg_min--;
-    }
-    
-    // Rotate minutes
-    if (cfg_min > 99) {
-      cfg_min = 0;
-    } else if (cfg_min < 0) {
-      cfg_min = 99;
-    }
+  int *selected = (selector == SELECT_SEC) ? &(cfg_time.sec) : &(cfg_time.min);
+  if (inc_val > 0) {
+    (*selected)++;
+  } else if (inc_val < 0) {
+    (*selected)--;
   }
 
-  duration = ((cfg_min * 60) + cfg_sec) * SCALE_SEC;
+  // Rotate seconds
+  if (cfg_time.sec > 59) {
+    cfg_time.sec = 0;
+  } else if (cfg_time.sec < 0) {
+    cfg_time.sec = 59;
+  }
+  // Rotate minutes
+  if (cfg_time.min > 99) {
+    cfg_time.min = 0;
+  } else if (cfg_time.min < 0) {
+    cfg_time.min = 99;
+  }
+
+  duration = ((cfg_time.min * 60) + cfg_time.sec) * SCALE_SEC;
 }
 
 void reset_duration() {
-  cfg_min = 0;
-  cfg_sec = 0;
+  cfg_time.min = 0;
+  cfg_time.sec = 0;
   duration = 0;
 }
 
@@ -202,11 +201,33 @@ void beep(const int ms) {
   delay(ms);
 }
 
+void proc_time(const unsigned long t_start, const unsigned long t_end) {
+  static int diff = 0;
+
+  int elapsed = (int)(t_end - t_start);
+  count -= elapsed;
+  diff += elapsed;
+
+  if (diff >= SCALE_SEC) {
+    disp_time.sec--;
+
+    if (disp_time.sec < 0) {
+      disp_time.sec = 59;
+      disp_time.min--;
+    }
+    if (disp_time.min < 0) {
+      disp_time.min = 0;
+    }
+
+    diff = (diff - SCALE_SEC);
+  }
+}
+
 void finish_timer() {  
   count = 0;
 
   // Print zero
-  print_time(count);
+  print_time();
 
   // Beep twice
   for (int i = 0; i < 2; i++) {
@@ -220,7 +241,7 @@ void finish_timer() {
 
 void run() {
   unsigned long t_s = millis();
-  print_time(count);
+  print_time();
 
   delay(100);
   
@@ -231,7 +252,8 @@ void run() {
   }
 
   unsigned long t_e = millis();
-  count -= (t_e - t_s) / 100;
+
+  proc_time(t_s, t_e);
 
   if (count <= 0) {
     finish_timer();
@@ -240,7 +262,7 @@ void run() {
 }
 
 void stop() {
-  print_time(count);
+  print_time();
 
   delay(100);
 
@@ -266,7 +288,7 @@ void configure() {
 
   change_duration(val);
 
-  print_time(duration);
+  print_time();
 
   delay(100);
 
