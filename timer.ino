@@ -22,6 +22,11 @@ static State state;
 static int count;
 #define SCALE_SEC 1000
 
+// Start of elapsed count
+static unsigned long prev_ms;
+// Sum of elapsed count
+static int sum_elapsed_ms;
+
 // Duration
 static int duration = 0;
 #define MAX_DURATION ((99 * 60 + 59) * SCALE_SEC)
@@ -76,7 +81,9 @@ void switch_state(const State next_state) {
       if (state == STATE_CONFIG) {
         count = duration;
         disp_time = cfg_time;
+        sum_elapsed_ms = 0;
       }
+      prev_ms = millis();
       state = STATE_RUNNING;
       break;
     case STATE_STOP:
@@ -91,9 +98,8 @@ void switch_state(const State next_state) {
 }
 
 void print_time() {
-  DispTime *t = (state == STATE_CONFIG) ? &cfg_time : &disp_time;
-  // Change fg/bg color
   int fg_color = WHITE;
+  // Change fg color
   if (state != STATE_CONFIG) {
     if (count <= (5 * SCALE_SEC)) {
       // Remaining 5 sec: print by red
@@ -106,6 +112,8 @@ void print_time() {
  
   M5.Lcd.setCursor(0, 0);
   M5.Lcd.setTextColor(fg_color, BLACK);
+  
+  DispTime *t = (state == STATE_CONFIG) ? &cfg_time : &disp_time;
 
   // Minutes
   M5.Lcd.setTextSize(10);
@@ -127,7 +135,20 @@ void print_time() {
   M5.Lcd.printf("\n%02d", t->sec);
   M5.Lcd.setTextSize(2);
   M5.Lcd.setTextColor(fg_color, BLACK);
-  M5.Lcd.println("\"");
+  M5.Lcd.print("\"");
+}
+
+void print_state() {
+  M5.Lcd.setTextSize(10);
+  M5.Lcd.println();
+  M5.Lcd.setTextSize(3);
+  if (state == STATE_RUNNING) {
+    M5.Lcd.print("\nRUNNING");
+  } else if (state == STATE_STOP) {
+    M5.Lcd.print("\nSTOP");
+  } else {
+    M5.Lcd.print("\nCONFIG");
+  }
 }
 
 int get_incremental_value() {
@@ -201,14 +222,12 @@ void beep(const int ms) {
   delay(ms);
 }
 
-void proc_time(const unsigned long t_start, const unsigned long t_end) {
-  static int diff = 0;
-
-  int elapsed = (int)(t_end - t_start);
+void proc_time(const unsigned long start_ms, const unsigned long end_ms) {
+  int elapsed = (int)(end_ms - start_ms);
   count -= elapsed;
-  diff += elapsed;
+  sum_elapsed_ms += elapsed;
 
-  if (diff >= SCALE_SEC) {
+  if (sum_elapsed_ms >= SCALE_SEC) {
     disp_time.sec--;
 
     if (disp_time.sec < 0) {
@@ -219,7 +238,7 @@ void proc_time(const unsigned long t_start, const unsigned long t_end) {
       disp_time.min = 0;
     }
 
-    diff = (diff - SCALE_SEC);
+    sum_elapsed_ms = (sum_elapsed_ms - SCALE_SEC);
   }
 }
 
@@ -228,6 +247,7 @@ void finish_timer() {
 
   // Print zero
   print_time();
+  print_state();
 
   // Beep twice
   for (int i = 0; i < 2; i++) {
@@ -235,36 +255,34 @@ void finish_timer() {
     delay(50);
   }
 
-  // Wait about 1 sec totally
-  delay(700);
+  // Wait 2 sec totally
+  delay(1700);
 }
 
 void run() {
-  unsigned long t_s = millis();
-  print_time();
+  unsigned long now_ms = millis();
+  proc_time(prev_ms, now_ms);
 
-  delay(100);
-  
+  print_time();
+  print_state();
+
   if (M5.BtnA.isPressed()) {
     beep(100);
     switch_state(STATE_STOP);
     return;
   }
 
-  unsigned long t_e = millis();
-
-  proc_time(t_s, t_e);
-
   if (count <= 0) {
     finish_timer();
     switch_state(STATE_CONFIG);
   }
+
+  prev_ms = now_ms;
 }
 
 void stop() {
   print_time();
-
-  delay(100);
+  print_state();
 
   if (M5.BtnA.isPressed()) {
     beep(100);
@@ -285,12 +303,12 @@ void configure() {
   }
 
   int val = get_incremental_value();
-
-  change_duration(val);
+  if (val != 0) {
+    change_duration(val);
+  }
 
   print_time();
-
-  delay(100);
+  print_state();
 
   if (M5.BtnA.isPressed()) {
     beep(100);
@@ -315,4 +333,6 @@ void loop() {
   } else { // STATE_CONFIG
     configure();
   }
+
+  delay(100);
 }
