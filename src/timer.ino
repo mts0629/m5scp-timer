@@ -169,22 +169,17 @@ bool is_enc_btn_pressed() {
   Wire.beginTransmission(ENC_I2C_ADDR);
   Wire.write(ENC_BTN_ADDR);
   Wire.endTransmission(false);
-
   Wire.requestFrom(ENC_I2C_ADDR, 1);
-  static bool pressed = false;
-  if (Wire.read() == 0) {
-    // Detect push
-    if (!pressed) {
-      pressed = true;
-    }
-  } else {
-    // Detect release
-    if (pressed) {
-      pressed = false;
-    }
-  }
 
-  return pressed;
+  static bool prev_pressed = false;
+  static bool pressed = false;
+  pressed = (Wire.read() == 0);
+
+  // Detect the change: (released -> pressed)
+  bool trigger = (!prev_pressed && pressed);
+  prev_pressed = pressed;
+
+  return trigger;
 }
 
 void change_duration(const int inc_val) {
