@@ -1,5 +1,6 @@
-#include <Wire.h>
+#include <EEPROM.h>
 #include <M5Unified.h>
+#include <Wire.h>
 
 // Hat Mini Encoder C specification
 #define ENC_INC_ADDR 0x10
@@ -28,13 +29,16 @@ static unsigned long prev_ms;
 static int sum_elapsed_ms;
 
 // Duration
-static int duration = 0;
+static int duration;
 #define MAX_DURATION ((99 * 60 + 59) * SCALE_SEC)
 
 // Duration selector
+#define SELECT_NONE 0
+#define SELECT_SEC 1
+#define SELECT_MIN 2
 static uint8_t selector;
-#define SELECT_SEC 0
-#define SELECT_MIN 1
+
+#define EEPROM_SAVE_ADDR 0
 
 // Time (min/sec)
 struct DispTime {
@@ -43,9 +47,13 @@ struct DispTime {
 };
 
 // Displayed time
-static DispTime disp_time;
+static DispTime disp_time = { 0, 0 };
 // Configured time
-static DispTime cfg_time;
+static DispTime cfg_time = { 0, 0 };
+
+int cvt_to_duration(const DispTime cfg) {
+  return ((cfg.min * 60) + cfg.sec) * SCALE_SEC;
+}
 
 void setup() {
   auto cfg = M5.config();
@@ -72,7 +80,13 @@ void setup() {
   M5.Lcd.setRotation(0);
 
   state = STATE_CONFIG;
-  selector = SELECT_SEC;
+  selector = SELECT_NONE;
+
+  EEPROM.begin(sizeof(DispTime));
+
+  // Load saved configuration
+  EEPROM.get(EEPROM_SAVE_ADDR, cfg_time);
+  duration = cvt_to_duration(cfg_time);
 }
 
 void switch_state(const State next_state) {
@@ -83,6 +97,7 @@ void switch_state(const State next_state) {
         disp_time = cfg_time;
         sum_elapsed_ms = 0;
       }
+
       prev_ms = millis();
       state = STATE_RUNNING;
       break;
@@ -203,7 +218,7 @@ void change_duration(const int inc_val) {
     cfg_time.min = 99;
   }
 
-  duration = ((cfg_time.min * 60) + cfg_time.sec) * SCALE_SEC;
+  duration = cvt_to_duration(cfg_time);
 }
 
 void reset_duration() {
@@ -294,12 +309,22 @@ void stop() {
 
 void configure() {
   if (is_enc_btn_pressed()) {
-    selector = (selector == SELECT_SEC) ? SELECT_MIN : SELECT_SEC;
+    if (selector < SELECT_MIN) {
+      selector++;
+    } else {
+      selector = SELECT_NONE;
+
+      // Save current configuration
+      EEPROM.put(EEPROM_SAVE_ADDR, cfg_time);
+      EEPROM.commit();
+    }
   }
 
-  int val = get_incremental_value();
-  if (val != 0) {
-    change_duration(val);
+  if (selector != SELECT_NONE) {
+    int val = get_incremental_value();
+    if (val != 0) {
+      change_duration(val);
+    }
   }
 
   print_time();
