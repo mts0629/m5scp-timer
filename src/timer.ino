@@ -1,14 +1,5 @@
 #include <EEPROM.h>
 #include <M5Unified.h>
-#include <Wire.h>
-
-// Hat Mini Encoder C specification
-#define ENC_INC_ADDR 0x10
-#define ENC_BTN_ADDR 0x20
-#define ENC_RST_ADDR 0x40
-#define ENC_I2C_ADDR 0x42
-#define ENC_PIN_SDA 0
-#define ENC_PIN_SCL 26
 
 // Timer state
 enum State {
@@ -32,12 +23,18 @@ static int sum_elapsed_ms;
 static int duration;
 #define MAX_DURATION ((99 * 60 + 59) * SCALE_SEC)
 
+// Button state
+#define BUTTON_NONE 0
+#define BUTTON_PRESSED 1
+#define BUTTON_HOLDING 2
+
 // Duration selector
 #define SELECT_NONE 0
-#define SELECT_SEC 1
-#define SELECT_MIN 2
+#define SELECT_MIN 1
+#define SELECT_SEC 2
 static uint8_t selector;
 
+// Configuration saved address on EEPROM
 #define EEPROM_SAVE_ADDR 0
 
 // Time (min/sec)
@@ -57,34 +54,17 @@ int cvt_to_duration(const DispTime cfg) {
 
 void setup() {
   auto cfg = M5.config();
-
   M5.begin(cfg);
 
-  // Initialize I2C connection to the encoder
-  Wire.begin(ENC_PIN_SDA, ENC_PIN_SCL, 100000UL);
-  delay(10);
-  Wire.beginTransmission(ENC_I2C_ADDR);
-  Wire.endTransmission(true);
-  delay(100);
-
-  // Reset a counter
-  Wire.beginTransmission(ENC_I2C_ADDR);
-  Wire.write(ENC_RST_ADDR);
-  Wire.write(1);
-  Wire.endTransmission(true);
-  delay(100);
-
-  // Initialize the screen
+  // Initialization
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setTextColor(WHITE, BLACK);
   M5.Lcd.setRotation(0);
-
   state = STATE_CONFIG;
   selector = SELECT_NONE;
 
-  EEPROM.begin(sizeof(DispTime));
-
   // Load saved configuration
+  EEPROM.begin(sizeof(DispTime));
   EEPROM.get(EEPROM_SAVE_ADDR, cfg_time);
   duration = cvt_to_duration(cfg_time);
 }
@@ -166,37 +146,6 @@ void print_state() {
   }
 }
 
-int get_incremental_value() {
-  Wire.beginTransmission(ENC_I2C_ADDR);
-  Wire.write(ENC_INC_ADDR);
-  Wire.endTransmission(true);
-  Wire.requestFrom(ENC_I2C_ADDR, 4);
-
-  uint8_t data[4];
-  for (int i = 0; i < 4; i++) {
-    data[i] = Wire.read();
-  }
-  
-  return ((data[3] << 24) | (data[2] << 16) | (data[1] << 8) | data[0]);
-}
-
-bool is_enc_btn_pressed() {
-  Wire.beginTransmission(ENC_I2C_ADDR);
-  Wire.write(ENC_BTN_ADDR);
-  Wire.endTransmission(false);
-  Wire.requestFrom(ENC_I2C_ADDR, 1);
-
-  static bool prev_pressed = false;
-  static bool pressed = false;
-  pressed = (Wire.read() == 0);
-
-  // Detect the change: (released -> pressed)
-  bool trigger = (!prev_pressed && pressed);
-  prev_pressed = pressed;
-
-  return trigger;
-}
-
 void change_duration(const int inc_val) {
   int *selected = (selector == SELECT_SEC) ? &(cfg_time.sec) : &(cfg_time.min);
   if (inc_val > 0) {
@@ -221,15 +170,20 @@ void change_duration(const int inc_val) {
   duration = cvt_to_duration(cfg_time);
 }
 
-void reset_duration() {
+void reset_config() {
   cfg_time.min = 0;
   cfg_time.sec = 0;
-  duration = 0;
 }
 
-void beep(const int ms) {
-  M5.Speaker.tone(2000, 100, 0, false);
-  delay(ms);
+void beep(const int time) {
+  constexpr int ms = 100;
+  constexpr int duration = 100;
+  constexpr int interval = 50;
+
+  for (int i = 0; i < time; i++) {
+    M5.Speaker.tone(2000, ms, 0, false);
+    delay(duration + interval);
+  }
 }
 
 void proc_time(const unsigned long start_ms, const unsigned long end_ms) {
@@ -259,14 +213,77 @@ void finish_timer() {
   print_time();
   print_state();
 
-  // Beep twice
-  for (int i = 0; i < 2; i++) {
-    beep(100);
-    delay(50);
+  beep(2);
+
+  // Wait 2 sec (wait 300 ms on beep x2)
+  delay(1700);
+}
+
+bool is_btn_a_pressed() {
+  static bool prev_pressed = false;
+  static bool pressed = false;
+
+  pressed = M5.BtnA.isPressed();
+
+  // Detect the change: (released -> pressed)
+  bool detected = (!prev_pressed && pressed);
+  prev_pressed = pressed;
+
+  return detected;
+}
+
+int get_btn_a_state() {
+  constexpr int hold_duration = SCALE_SEC / 2; // 500 ms
+  static bool pressed = false;
+  static unsigned long btn_a_press_start = 0;
+
+  unsigned long now;
+  if (M5.BtnA.isPressed()) {
+    if (!pressed) {
+      btn_a_press_start = millis();
+      pressed = true;
+    }
+
+    now = millis();
+
+    if ((now - btn_a_press_start) > hold_duration) {
+      return BUTTON_HOLDING;
+    }
+  } else {
+    if (pressed) {
+      pressed = false;
+      return BUTTON_PRESSED;
+    }
   }
 
-  // Wait 2 sec totally
-  delay(1700);
+  return BUTTON_NONE;
+}
+
+int get_btn_b_state() {
+  constexpr int hold_duration = SCALE_SEC / 2; // 500 ms
+  static bool pressed = false;
+  static unsigned long btn_b_press_start = 0;
+
+  unsigned long now;
+  if (M5.BtnB.isPressed()) {
+    if (!pressed) {
+      btn_b_press_start = millis();
+      pressed = true;
+    }
+
+    now = millis();
+
+    if ((now - btn_b_press_start) > hold_duration) {
+      return BUTTON_HOLDING;
+    }
+  } else {
+    if (pressed) {
+      pressed = false;
+      return BUTTON_PRESSED;
+    }
+  }
+
+  return BUTTON_NONE;
 }
 
 void run() {
@@ -276,8 +293,8 @@ void run() {
   print_time();
   print_state();
 
-  if (M5.BtnA.isPressed()) {
-    beep(100);
+  if (is_btn_a_pressed()) {
+    beep(1);
     switch_state(STATE_STOP);
     return;
   }
@@ -294,52 +311,73 @@ void stop() {
   print_time();
   print_state();
 
-  if (M5.BtnA.isPressed()) {
-    beep(100);
+  if (is_btn_a_pressed()) {
+    beep(1);
     switch_state(STATE_RUNNING);
     return;
   }
 
-  if (M5.BtnB.isPressed()) {
-    beep(100);
+  if (get_btn_b_state() == BUTTON_PRESSED) {
+    beep(2);
     switch_state(STATE_CONFIG);
     return;
   }
 }
 
+void save_config() {
+  EEPROM.put(EEPROM_SAVE_ADDR, cfg_time);
+  EEPROM.commit();
+}
+
 void configure() {
-  if (is_enc_btn_pressed()) {
-    if (selector < SELECT_MIN) {
-      selector++;
-    } else {
-      selector = SELECT_NONE;
-
-      // Save current configuration
-      EEPROM.put(EEPROM_SAVE_ADDR, cfg_time);
-      EEPROM.commit();
-    }
-  }
-
-  if (selector != SELECT_NONE) {
-    int val = get_incremental_value();
-    if (val != 0) {
-      change_duration(val);
-    }
-  }
+  static bool btn_b_holding = false;
 
   print_time();
   print_state();
 
-  if (M5.BtnA.isPressed()) {
-    beep(100);
-    switch_state(STATE_RUNNING);
-    return;
+  if (get_btn_a_state() == BUTTON_PRESSED) {
+    if (selector == SELECT_NONE) {
+      beep(1);
+      switch_state(STATE_RUNNING);
+      return;
+    } else {
+      change_duration(1);
+    }
+  } else if (get_btn_a_state() == BUTTON_HOLDING) {
+    if (selector != SELECT_NONE) {
+      change_duration(1);
+    }
   }
 
-  if (M5.BtnB.isPressed()) {
-    beep(100);
-    reset_duration();
-    return;
+  if (get_btn_b_state() == BUTTON_PRESSED) {
+    if (!btn_b_holding) {
+      beep(1);
+
+      selector = (selector == SELECT_NONE) ? SELECT_MIN :
+                 (selector == SELECT_MIN) ? SELECT_SEC :
+                 SELECT_NONE;
+
+      if (selector == SELECT_NONE) {
+        save_config();
+      }
+    }
+  } else if (get_btn_b_state() == BUTTON_HOLDING) {
+    if (!btn_b_holding) {
+      beep(2);
+
+      if (selector == SELECT_MIN) {
+        cfg_time.min = 0;
+      } else if (selector == SELECT_SEC) {
+        cfg_time.sec = 0;
+      } else {
+        reset_config();
+      }
+
+      save_config();
+      btn_b_holding = true;
+    }
+  } else { // BUTTON_NONE
+    btn_b_holding = false;
   }
 }
 
