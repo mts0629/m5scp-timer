@@ -26,6 +26,8 @@ When the device is power-on, it starts from the configuration mode.
         - Otherwise, reset all duration
             - Configuration is saved on reset
 
+If non-operation time continues by 3 minutes, the device will power off automatically.
+
 ### Running mode
 
 - Button A: stop timer -> [Stop mode]

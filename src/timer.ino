@@ -340,7 +340,8 @@ void configure() {
     print_time();
     print_state();
 
-    if (get_btn_a_state() == ButtonState::Pressed) {
+    auto btn_a_state = get_btn_a_state();
+    if (btn_a_state == ButtonState::Pressed) {
         if (selector == Selector::None) {
             beep(1);
             switch_state(State::Running);
@@ -348,13 +349,14 @@ void configure() {
         } else {
             change_duration(1);
         }
-    } else if (get_btn_a_state() == ButtonState::Holding) {
+    } else if (btn_a_state == ButtonState::Holding) {
         if (selector != Selector::None) {
             change_duration(1);
         }
     }
 
-    if (get_btn_b_state() == ButtonState::Pressed) {
+    auto btn_b_state = get_btn_b_state();
+    if (btn_b_state == ButtonState::Pressed) {
         if (!btn_b_holding) {
             beep(1);
 
@@ -366,7 +368,7 @@ void configure() {
                 save_config();
             }
         }
-    } else if (get_btn_b_state() == ButtonState::Holding) {
+    } else if (btn_b_state == ButtonState::Holding) {
         if (!btn_b_holding) {
             beep(2);
 
@@ -383,6 +385,26 @@ void configure() {
         }
     } else { // ButtonState::NONE
         btn_b_holding = false;
+    }
+
+    // Checking no operation time
+    static bool nop_started = false;
+    if ((btn_a_state == ButtonState::None) &&
+        (btn_b_state == ButtonState::None)) {
+        static unsigned long nop_start_time;
+        if (nop_started) {
+            auto now = millis();
+            // When no operation time continues, power off automatically
+            constexpr unsigned long TIMEOUT = 3 * 60 * SCALE_SEC;
+            if ((now - nop_start_time) > TIMEOUT) {
+                M5.Power.powerOff();
+            }
+        } else {
+            nop_start_time = millis();
+            nop_started = true;
+        }
+    } else {
+        nop_started = false;
     }
 }
 
