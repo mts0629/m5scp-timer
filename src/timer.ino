@@ -218,10 +218,10 @@ void finish_timer() {
     print_time();
     print_state();
 
-    beep(2);
+    beep(3);
 
-    // Wait 2 sec (wait 300 ms on beep x2)
-    delay(1700);
+    // Wait 3 sec (wait 150 ms per beep)
+    delay(3000 - (150 * 3));
 }
 
 bool is_btn_a_pressed() {
@@ -358,14 +358,15 @@ void configure() {
     auto btn_b_state = get_btn_b_state();
     if (btn_b_state == ButtonState::Pressed) {
         if (!btn_b_holding) {
-            beep(1);
-
             selector = (selector == Selector::None) ? Selector::Min :
                        (selector == Selector::Min) ? Selector::Sec :
                        Selector::None;
 
             if (selector == Selector::None) {
+                beep(2);
                 save_config();
+            } else {
+                beep(1);
             }
         }
     } else if (btn_b_state == ButtonState::Holding) {
