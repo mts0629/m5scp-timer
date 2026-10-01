@@ -51,6 +51,10 @@ static DispTime disp_time = { 0, 0 };
 // Configured time
 static DispTime cfg_time = { 0, 0 };
 
+// Checker of no operation time
+static unsigned long nop_start_time;
+static bool nop_started;
+
 int cvt_to_duration(const DispTime cfg) {
     return ((cfg.min * 60) + cfg.sec) * SCALE_SEC;
 }
@@ -70,6 +74,9 @@ void setup() {
     EEPROM.begin(sizeof(DispTime));
     EEPROM.get(EEPROM_SAVE_ADDR, cfg_time);
     duration = cvt_to_duration(cfg_time);
+
+    nop_start_time = millis();
+    nop_started = false;
 }
 
 void switch_state(const State next_state) {
@@ -89,6 +96,8 @@ void switch_state(const State next_state) {
             break;
         default: // State::Config
             state = State::Config;
+            nop_start_time = millis();
+            nop_started = false;
             break;
     }
 
@@ -388,11 +397,8 @@ void configure() {
         btn_b_holding = false;
     }
 
-    // Checking no operation time
-    static bool nop_started = false;
-    if ((btn_a_state == ButtonState::None) &&
-        (btn_b_state == ButtonState::None)) {
-        static unsigned long nop_start_time;
+    // Check no operation time
+    if ((btn_a_state == ButtonState::None) && (btn_b_state == ButtonState::None)) {
         if (nop_started) {
             auto now = millis();
             // When no operation time continues, power off automatically
